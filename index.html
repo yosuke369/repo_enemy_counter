@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R.E.P.O. Enemy Counter</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --text-color: #f0f0f0;
+            --primary-color: #d32f2f;
+            --secondary-color: #757575;
+            --accent-color: #fdd835;
+            --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: var(--font-family);
+            margin: 0;
+            padding: 1rem;
+        }
+        h1, h2 {
+            color: var(--primary-color);
+            text-align: center;
+            border-bottom: 2px solid var(--secondary-color);
+            padding-bottom: 0.5rem;
+            margin-top: 2rem;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-top: 0;
+        }
+        h2 {
+            font-size: 1.8rem;
+        }
+        section {
+            margin-bottom: 2rem;
+        }
+        #controls-section {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+        .btn {
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            width: 100%;
+            max-width: 400px;
+        }
+        .database-group h3 {
+            color: var(--accent-color);
+            font-size: 1.5rem;
+            margin-top: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .enemy-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+        .enemy-control {
+            display: flex;
+            flex-direction: column;
+            background-color: #2c2c2c;
+            border-radius: 8px;
+            overflow: hidden;
+            text-align: center;
+        }
+        .enemy-name {
+            padding: 0.8rem;
+            font-size: 1.1rem;
+        }
+        .enemy-actions {
+            display: flex;
+            justify-content: space-between;
+        }
+        .action-btn {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+            border: none;
+            padding: 0.8rem;
+            font-size: 1.5rem;
+            cursor: pointer;
+            width: 50%;
+        }
+        .action-btn:hover {
+            opacity: 0.8;
+        }
+        .increment-btn {
+             background-color: #4CAF50;
+        }
+        .active-threat-item {
+            background-color: #333;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            border-radius: 5px;
+            font-size: 1.2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .active-threat-item span {
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+    </style>
+</head>
+<body>
+
+    <h1>R.E.P.O. Enemy Counter</h1>
+
+    <section id="active-threats-section">
+        <h2>ACTIVE THREATS</h2>
+        <div id="active-threats-list">
+            <!-- Active threats will be dynamically inserted here -->
+        </div>
+    </section>
+
+    <section id="controls-section">
+        <button id="level-clear-btn" class="btn">LEVEL CLEAR</button>
+    </section>
+
+    <section id="database-section">
+        <h2>DATABASE</h2>
+        <div id="database-groups">
+            <!-- Enemy groups will be dynamically inserted here -->
+        </div>
+    </section>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const activeThreatsList = document.getElementById('active-threats-list');
+            const levelClearBtn = document.getElementById('level-clear-btn');
+            const databaseGroups = document.getElementById('database-groups');
+
+            let enemiesData = [];
+            let enemyCounts = {};
+
+            const dangerLevels = {
+                'High': 3,
+                'Medium': 2,
+                'Low': 1,
+            };
+
+            const renderActiveThreats = () => {
+                activeThreatsList.innerHTML = '';
+                const sortedActiveEnemies = Object.entries(enemyCounts)
+                    .filter(([, count]) => count > 0)
+                    .sort(([nameA], [nameB]) => nameA.localeCompare(nameB));
+
+                if (sortedActiveEnemies.length === 0) {
+                    activeThreatsList.innerHTML = '<p style="text-align: center; color: var(--secondary-color);">No active threats.</p>';
+                    return;
+                }
+
+                for (const [name, count] of sortedActiveEnemies) {
+                    const item = document.createElement('div');
+                    item.className = 'active-threat-item';
+                    item.innerHTML = `
+                        ${name} <span>x${count}</span>
+                    `;
+                    activeThreatsList.appendChild(item);
+                }
+            };
+
+            const renderDatabase = () => {
+                databaseGroups.innerHTML = '';
+                
+                const sortedDangerLevels = Object.keys(dangerLevels).sort((a, b) => dangerLevels[b] - dangerLevels[a]);
+
+                for (const level of sortedDangerLevels) {
+                    const groupContainer = document.createElement('div');
+                    groupContainer.className = 'database-group';
+
+                    const groupTitle = document.createElement('h3');
+                    groupTitle.textContent = `DANGER LEVEL: ${level.toUpperCase()}`;
+                    groupContainer.appendChild(groupTitle);
+
+                    const grid = document.createElement('div');
+                    grid.className = 'enemy-grid';
+
+                    const enemiesInLevel = enemiesData.filter(enemy => enemy.danger === level);
+
+                    for (const enemy of enemiesInLevel) {
+                        const control = document.createElement('div');
+                        control.className = 'enemy-control';
+                        control.innerHTML = `
+                            <div class="enemy-name">${enemy.name}</div>
+                            <div class="enemy-actions">
+                                <button class="action-btn decrement-btn" data-enemy-name="${enemy.name}">-</button>
+                                <button class="action-btn increment-btn" data-enemy-name="${enemy.name}">+</button>
+                            </div>
+                        `;
+                        grid.appendChild(control);
+                    }
+                    groupContainer.appendChild(grid);
+                    databaseGroups.appendChild(groupContainer);
+                }
+                addDatabaseEventListeners();
+            };
+
+            const handleCountChange = (enemyName, amount) => {
+                if (!enemyCounts[enemyName] && amount < 0) return;
+                enemyCounts[enemyName] = (enemyCounts[enemyName] || 0) + amount;
+                if (enemyCounts[enemyName] < 0) {
+                    enemyCounts[enemyName] = 0;
+                }
+                renderActiveThreats();
+            };
+
+            const addDatabaseEventListeners = () => {
+                databaseGroups.querySelectorAll('.action-btn').forEach(button => {
+                    button.addEventListener('click', (e) => {
+                        const enemyName = e.target.dataset.enemyName;
+                        if (e.target.classList.contains('increment-btn')) {
+                            handleCountChange(enemyName, 1);
+                        } else if (e.target.classList.contains('decrement-btn')) {
+                            handleCountChange(enemyName, -1);
+                        }
+                    });
+                });
+            };
+
+            const handleLevelClear = () => {
+                if (confirm('Are you sure you want to clear all counts?')) {
+                    enemyCounts = {};
+                    renderActiveThreats();
+                }
+            };
+
+            const init = async () => {
+                try {
+                    const response = await fetch('./enemies.json');
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const data = await response.json();
+                    enemiesData = data.sort((a, b) => a.name.localeCompare(b.name));
+                    
+                    renderDatabase();
+                    renderActiveThreats();
+
+                    levelClearBtn.addEventListener('click', handleLevelClear);
+
+                } catch (error) {
+                    console.error("Failed to fetch or process enemies.json:", error);
+                    databaseGroups.innerHTML = '<p style="text-align: center; color: var(--primary-color);">Error loading enemy data. Please check the console.</p>';
+                }
+            };
+
+            init();
+        });
+    </script>
+</body>
+</html>
