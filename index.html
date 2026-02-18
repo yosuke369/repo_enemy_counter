@@ -30,7 +30,7 @@
         }
         h1 {
             font-size: 2.5rem;
-            margin-top: 0;
+            margin-top: 1rem;
         }
         h2 {
             font-size: 1.8rem;
@@ -48,21 +48,77 @@
             height: var(--footer-height);
             box-sizing: border-box;
             display: flex;
-            justify-content: center;
+            justify-content: space-around;
             align-items: center;
             border-top: 1px solid var(--secondary-color);
+            gap: 1rem;
         }
         .btn {
             background-color: var(--primary-color);
             color: var(--text-color);
             border: none;
-            padding: 1rem 2rem;
+            padding: 1rem 1.5rem;
             font-size: 1.2rem;
             font-weight: bold;
             cursor: pointer;
             border-radius: 5px;
-            width: 100%;
-            max-width: 400px;
+            flex-shrink: 0;
+        }
+
+        /* Wake Lock Toggle */
+        .wake-lock-control {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .wake-lock-control label {
+            font-size: 1rem;
+            margin-right: 10px;
+            white-space: nowrap;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 28px;
+            flex-shrink: 0;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--secondary-color);
+            transition: .4s;
+            border-radius: 28px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: var(--accent-color);
+        }
+        input:disabled + .slider {
+            background-color: #555;
+            cursor: not-allowed;
+        }
+        input:checked + .slider:before {
+            transform: translateX(22px);
         }
 
         /* Active Threats Area */
@@ -187,6 +243,13 @@
     </section>
 
     <footer id="controls-footer">
+        <div class="wake-lock-control">
+            <label for="wake-lock-toggle">Screen Always On</label>
+            <label class="toggle-switch">
+                <input type="checkbox" id="wake-lock-toggle">
+                <span class="slider"></span>
+            </label>
+        </div>
         <button id="level-clear-btn" class="btn">LEVEL CLEAR</button>
     </footer>
 
@@ -196,6 +259,7 @@
             const levelClearBtn = document.getElementById('level-clear-btn');
             const databaseTabNav = document.getElementById('database-tab-nav');
             const databaseTabContent = document.getElementById('database-tab-content');
+            const wakeLockToggle = document.getElementById('wake-lock-toggle');
 
             let enemiesData = [];
             let enemyCounts = {};
@@ -254,7 +318,6 @@
                 databaseTabContent.innerHTML = '';
 
                 Object.keys(levelNames).sort((a, b) => a - b).forEach((level, index) => {
-                    // Create Tab Button
                     const tabButton = document.createElement('button');
                     tabButton.className = 'tab-btn';
                     tabButton.dataset.level = level;
@@ -262,7 +325,6 @@
                     if (index === 0) tabButton.classList.add('active');
                     databaseTabNav.appendChild(tabButton);
 
-                    // Create Tab Content Panel
                     const contentPanel = document.createElement('div');
                     contentPanel.id = `tab-level-${level}`;
                     contentPanel.className = 'tab-content';
@@ -318,12 +380,8 @@
                 databaseTabNav.querySelectorAll('.tab-btn').forEach(button => {
                     button.addEventListener('click', (e) => {
                         const targetLevel = e.target.dataset.level;
-
-                        // Deactivate all tabs and contents
                         databaseTabNav.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
                         databaseTabContent.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-                        
-                        // Activate clicked tab and corresponding content
                         e.target.classList.add('active');
                         document.getElementById(`tab-level-${targetLevel}`).classList.add('active');
                     });
@@ -336,6 +394,61 @@
                     renderActiveThreats();
                 }
             };
+            
+            // --- Wake Lock API with Toggle ---
+            let wakeLock = null;
+
+            const requestWakeLock = async () => {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    wakeLock.addEventListener('release', () => {
+                        // This happens if the lock is released by the system, e.g. tab goes to background
+                        console.log('Screen Wake Lock was released.');
+                        wakeLock = null; 
+                    });
+                    console.log('Screen Wake Lock is active.');
+                } catch (err) {
+                    console.error(`Wake Lock failed: ${err.name}, ${err.message}`);
+                    wakeLockToggle.checked = false; // Turn off toggle if request fails
+                }
+            };
+            
+            const releaseWakeLock = async () => {
+                if (wakeLock !== null) {
+                    await wakeLock.release();
+                    wakeLock = null;
+                    console.log('Screen Wake Lock manually released.');
+                }
+            };
+
+            const initWakeLock = () => {
+                if ('wakeLock' in navigator) {
+                    wakeLockToggle.addEventListener('change', async () => {
+                        if (wakeLockToggle.checked) {
+                            // Request lock on first user interaction after toggling on
+                             document.addEventListener('click', requestWakeLock, { once: true });
+                             document.addEventListener('touchstart', requestWakeLock, { once: true });
+                             console.log('Wake Lock will be requested on next user interaction.');
+                        } else {
+                            await releaseWakeLock();
+                        }
+                    });
+
+                    document.addEventListener('visibilitychange', async () => {
+                        if (document.visibilityState === 'hidden') {
+                            // Do not release here, allow system to handle it. Re-acquiring is key.
+                        } else if (document.visibilityState === 'visible' && wakeLockToggle.checked) {
+                            // Re-acquire lock if tab becomes visible and toggle is still on
+                            await requestWakeLock();
+                        }
+                    });
+
+                } else {
+                    console.log('Wake Lock API is not supported in this browser.');
+                    wakeLockToggle.disabled = true;
+                }
+            };
+            // --- End Wake Lock API ---
 
             const init = async () => {
                 try {
@@ -347,8 +460,10 @@
                     
                     renderDatabase();
                     renderActiveThreats();
-
+                    
                     levelClearBtn.addEventListener('click', handleLevelClear);
+
+                    initWakeLock();
 
                 } catch (error) {
                     console.error("Failed to fetch or process enemies.json:", error);
